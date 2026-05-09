@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: serbian-english-translator
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false   # Set this manually in the Render dashboard

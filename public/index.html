@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Serbian → English Live Translator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e8eaf0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px 48px;
+    }
+
+    /* ── Header ─────────────────────────────────────── */
+    .header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .header h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.02em;
+    }
+    .header p {
+      margin-top: 6px;
+      color: #666;
+      font-size: 0.875rem;
+    }
+
+    /* ── Status badge ────────────────────────────────── */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      margin-bottom: 28px;
+      transition: background 0.3s, color 0.3s;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-idle   { background: #1c1f2e; color: #666; }
+    .status-idle .dot { background: #444; }
+
+    .status-connecting { background: #2a2310; color: #f5a623; }
+    .status-connecting .dot { background: #f5a623; animation: blink 0.8s infinite; }
+
+    .status-active { background: #0a2318; color: #34d058; }
+    .status-active .dot { background: #34d058; animation: blink 2s infinite; }
+
+    .status-error  { background: #2b0e0e; color: #f87171; }
+    .status-error .dot { background: #f87171; }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.25; }
+    }
+
+    /* ── Controls ────────────────────────────────────── */
+    .controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .btn {
+      padding: 11px 36px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-start { background: #2563eb; color: #fff; }
+    .btn-start:hover:not(:disabled) { background: #1d4ed8; }
+
+    .btn-stop { background: #374151; color: #d1d5db; }
+    .btn-stop:hover { background: #4b5563; }
+
+    .hint {
+      font-size: 0.8rem;
+      color: #555;
+      text-align: center;
+      max-width: 400px;
+      line-height: 1.55;
+    }
+    .hint strong { color: #888; }
+
+    /* ── Transcripts ─────────────────────────────────── */
+    .transcripts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      width: 100%;
+      max-width: 860px;
+    }
+    @media (max-width: 580px) {
+      .transcripts { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: #181b28;
+      border: 1px solid #242738;
+      border-radius: 12px;
+      padding: 16px;
+      min-height: 260px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .panel-label .flag { font-size: 1rem; }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      font-size: 0.92rem;
+      line-height: 1.75;
+    }
+
+    .utterance-done   { color: #666; margin-bottom: 6px; }
+    .utterance-active { color: #e8eaf0; margin-bottom: 6px; }
+
+    .empty-hint {
+      color: #333;
+      font-style: italic;
+      font-size: 0.85rem;
+    }
+
+    /* ── Timer ───────────────────────────────────────── */
+    .timer {
+      margin-top: 18px;
+      font-size: 0.75rem;
+      color: #444;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    audio { display: none; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>🇷🇸 &rarr; 🇬🇧 &nbsp;Live Translator</h1>
+    <p>Serbian speech &rarr; real-time English audio &amp; captions</p>
+  </div>
+
+  <div id="statusBadge" class="status-badge status-idle">
+    <span class="dot"></span>
+    <span id="statusText">Ready</span>
+  </div>
+
+  <div class="controls">
+    <button id="btnStart" class="btn btn-start" onclick="startTranslation()">
+      Start Translation
+    </button>
+    <button id="btnStop" class="btn btn-stop" onclick="stopTranslation()" style="display:none">
+      Stop
+    </button>
+    <p class="hint" id="hint">
+      Click <strong>Start</strong>, then choose the Zoom tab and
+      make sure <strong>"Share tab audio"</strong> is checked.
+    </p>
+  </div>
+
+  <div class="transcripts">
+    <div class="panel">
+      <div class="panel-label"><span class="flag">🇷🇸</span> Serbian &mdash; source</div>
+      <div class="panel-body" id="serbianPanel">
+        <span class="empty-hint">Source speech will appear here&hellip;</span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-label"><span class="flag">🇬🇧</span> English &mdash; translation</div>
+      <div class="panel-body" id="englishPanel">
+        <span class="empty-hint">Translation will appear here&hellip;</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="timer" id="timer"></div>
+
+  <audio id="translatedAudio" autoplay></audio>
+
+  <script>
+    // ── State ──────────────────────────────────────────────────────────────────
+    let pc           = null;
+    let sourceStream = null;
+    let sessionStart = null;
+    let timerInterval = null;
+
+    const tx = {
+      serbian: { done: [], active: '' },
+      english: { done: [], active: '' },
+    };
+
+    // ── UI helpers ─────────────────────────────────────────────────────────────
+    function setStatus(state, text) {
+      const badge = document.getElementById('statusBadge');
+      badge.className = `status-badge status-${state}`;
+      document.getElementById('statusText').textContent = text;
+    }
+
+    function setHint(html) {
+      document.getElementById('hint').innerHTML = html;
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function renderPanel(lang) {
+      const el = document.getElementById(lang === 'serbian' ? 'serbianPanel' : 'englishPanel');
+      const { done, active } = tx[lang];
+      let html = '';
+
+      // Show last 6 completed utterances, oldest greyed-out
+      done.slice(-6).forEach(t => {
+        html += `<div class="utterance-done">${escHtml(t)}</div>`;
+      });
+      if (active) {
+        html += `<div class="utterance-active">${escHtml(active)}</div>`;
+      }
+      if (!html) {
+        html = '<span class="empty-hint">Listening&hellip;</span>';
+      }
+
+      el.innerHTML = html;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function updateTimer() {
+      if (!sessionStart) return;
+      const secs  = Math.floor((Date.now() - sessionStart) / 1000);
+      const m     = Math.floor(secs / 60).toString().padStart(2, '0');
+      const s     = (secs % 60).toString().padStart(2, '0');
+      const cost  = ((secs / 60) * 0.034).toFixed(3);
+      document.getElementById('timer').textContent =
+        `Session time: ${m}:${s}  ·  Est. cost: $${cost}`;
+    }
+
+    // ── Main logic ─────────────────────────────────────────────────────────────
+    async function startTranslation() {
+      const btnStart = document.getElementById('btnStart');
+      const btnStop  = document.getElementById('btnStop');
+
+      btnStart.disabled = true;
+      setStatus('connecting', 'Connecting…');
+      setHint('Requesting translation session from server…');
+
+      try {
+        // 1 ─ Get short-lived client secret from our server
+        const res = await fetch('/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err?.error?.message || `Server error ${res.status}`);
+        }
+
+        const session = await res.json();
+        const clientSecret = session.client_secret;
+        if (!clientSecret) throw new Error('No client_secret in server response');
+
+        // 2 ─ Capture Zoom tab audio
+        setHint('Choose your <strong>Zoom tab</strong> → check <strong>"Share tab audio"</strong>');
+
+        const audioConstraints = {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        };
+        // Suppress original audio on Scott's end so only the translation plays
+        if (navigator.mediaDevices.getSupportedConstraints?.().suppressLocalAudioPlayback) {
+          audioConstraints.suppressLocalAudioPlayback = true;
+        }
+
+        sourceStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,   // required by spec even though we only want audio
+          audio: audioConstraints,
+        });
+
+        // Drop the video track immediately — we only need audio
+        sourceStream.getVideoTracks().forEach(t => t.stop());
+
+        const audioTracks = sourceStream.getAudioTracks();
+        if (!audioTracks.length) {
+          sourceStream.getTracks().forEach(t => t.stop());
+          throw new Error('No audio captured. Make sure to check "Share tab audio" when prompted.');
+        }
+
+        // If the user closes the share from Chrome's toolbar, stop cleanly
+        audioTracks[0].addEventListener('ended', () => stopTranslation());
+
+        // 3 ─ Set up WebRTC peer connection
+        setHint('Establishing connection with OpenAI…');
+        pc = new RTCPeerConnection();
+
+        audioTracks.forEach(t => pc.addTrack(t, sourceStream));
+
+        // Translated audio arrives as a remote WebRTC track
+        pc.ontrack = ({ streams }) => {
+          document.getElementById('translatedAudio').srcObject = streams[0];
+        };
+
+        // Transcript and error events come over this data channel
+        const events = pc.createDataChannel('oai-events');
+        events.onmessage = ({ data }) => {
+          try { handleEvent(JSON.parse(data)); } catch (_) {}
+        };
+
+        // 4 ─ SDP offer → OpenAI → set remote description
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        const sdpRes = await fetch('https://api.openai.com/v1/realtime/translations/calls', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${clientSecret}`,
+            'Content-Type': 'application/sdp',
+          },
+          body: offer.sdp,
+        });
+
+        if (!sdpRes.ok) {
+          throw new Error(`OpenAI returned ${sdpRes.status}: ${await sdpRes.text()}`);
+        }
+
+        await pc.setRemoteDescription({ type: 'answer', sdp: await sdpRes.text() });
+
+        // 5 ─ All good — update UI
+        setStatus('active', 'Translating');
+        btnStart.style.display = 'none';
+        btnStop.style.display  = 'inline-block';
+        setHint("Nevena's Serbian speech is being translated to English in real time.");
+
+        // Reset transcripts
+        tx.serbian = { done: [], active: '' };
+        tx.english = { done: [], active: '' };
+        renderPanel('serbian');
+        renderPanel('english');
+
+        sessionStart  = Date.now();
+        timerInterval = setInterval(updateTimer, 1000);
+
+      } catch (err) {
+        console.error('Translation setup failed:', err);
+        setStatus('error', 'Error');
+        setHint(`<strong>Error:</strong> ${escHtml(err.message)}`);
+        btnStart.disabled = false;
+        cleanup();
+      }
+    }
+
+    function handleEvent(event) {
+      switch (event.type) {
+        case 'session.input_transcript.delta':
+          tx.serbian.active += event.delta;
+          renderPanel('serbian');
+          break;
+        case 'session.input_transcript.done':
+          if (tx.serbian.active.trim()) tx.serbian.done.push(tx.serbian.active.trim());
+          tx.serbian.active = '';
+          renderPanel('serbian');
+          break;
+        case 'session.output_transcript.delta':
+          tx.english.active += event.delta;
+          renderPanel('english');
+          break;
+        case 'session.output_transcript.done':
+          if (tx.english.active.trim()) tx.english.done.push(tx.english.active.trim());
+          tx.english.active = '';
+          renderPanel('english');
+          break;
+        case 'error':
+          console.error('OpenAI event error:', event);
+          break;
+      }
+    }
+
+    function cleanup() {
+      if (sourceStream) { sourceStream.getTracks().forEach(t => t.stop()); sourceStream = null; }
+      if (pc)           { pc.close(); pc = null; }
+      clearInterval(timerInterval);
+      sessionStart = null;
+    }
+
+    function stopTranslation() {
+      cleanup();
+      setStatus('idle', 'Ready');
+      document.getElementById('btnStart').disabled = false;
+      document.getElementById('btnStart').style.display = 'inline-block';
+      document.getElementById('btnStop').style.display  = 'none';
+      setHint('Click <strong>Start</strong>, then choose the Zoom tab and make sure <strong>"Share tab audio"</strong> is checked.');
+      document.getElementById('timer').textContent = '';
+    }
+  </script>
+</body>
+</html>

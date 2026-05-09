@@ -293,8 +293,17 @@
         }
 
         const session = await res.json();
-        const clientSecret = session.client_secret;
-        if (!clientSecret) throw new Error('No client_secret in server response');
+
+        // OpenAI returns client_secret as either a plain string or {value: "...", expires_at: ...}
+        const rawSecret = session.client_secret;
+        const clientSecret = rawSecret?.value ?? rawSecret;
+
+        if (!clientSecret || typeof clientSecret !== 'string') {
+          // Show the raw response in the error so we can diagnose easily
+          throw new Error(
+            `No client_secret found. Server returned: ${JSON.stringify(session).slice(0, 200)}`
+          );
+        }
 
         // 2 ─ Capture Zoom tab audio
         setHint('Choose your <strong>Zoom tab</strong> → check <strong>"Share tab audio"</strong>');

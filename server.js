@@ -43,6 +43,10 @@ app.post('/session', async (req, res) => {
 
     const data = await response.json();
 
+    // Log the full response so we can debug unexpected shapes
+    console.log('OpenAI response status:', response.status);
+    console.log('OpenAI response body:', JSON.stringify(data));
+
     if (!response.ok) {
       console.error('OpenAI API error:', data);
       return res.status(response.status).json(data);

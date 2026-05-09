@@ -294,14 +294,15 @@
 
         const session = await res.json();
 
-        // OpenAI returns client_secret as either a plain string or {value: "...", expires_at: ...}
-        const rawSecret = session.client_secret;
-        const clientSecret = rawSecret?.value ?? rawSecret;
+        // The translations endpoint returns {value: "ek_...", expires_at: ..., session: {...}}
+        // i.e. the token is at the top level as .value, not nested under .client_secret
+        const clientSecret = session.value
+          ?? session.client_secret?.value
+          ?? session.client_secret;
 
         if (!clientSecret || typeof clientSecret !== 'string') {
-          // Show the raw response in the error so we can diagnose easily
           throw new Error(
-            `No client_secret found. Server returned: ${JSON.stringify(session).slice(0, 200)}`
+            `No token found. Server returned: ${JSON.stringify(session).slice(0, 200)}`
           );
         }
 
